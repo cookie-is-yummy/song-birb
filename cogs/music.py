@@ -16,6 +16,7 @@ from yt_dlp import YoutubeDL
 from yt_dlp import utils
 import yt_dlp
 import spotipy
+import re
 from spotipy.oauth2 import SpotifyOAuth
 from spotdl import __main__ as start
 from spotdl.search import SongObject
@@ -204,89 +205,108 @@ class Music(commands.Cog):
 
     @commands.command(aliases=["p"])
     async def play(self, ctx, *, song):
-        message = await ctx.reply(content = "Processing...")
-        if ctx.voice_client is None:
-            await self.join(ctx, False, message)
-        elif ctx.author.voice.channel is None:
-            await message.edit("You need to be in a voice channel in order to use the bot!")
-        elif not (ctx.author.voice.channel and ctx.author.voice.channel == ctx.voice_client.channel):
-            await message.edit("You need to be in the same voice channel as the bot in order to use this command.")
-        self.textchannel = ctx.channel
-        notlivestream = True
-        num = 0
-        info = ydl.extract_info(f"ytsearch:{song}", download=False)['entries'][num]
-        if info['duration'] == None:
-            while notlivestream:
-                info = ydl.extract_info(f"ytsearch3:{song}", download=False)['entries'][num]
-                if info['duration'] == None:
-                    num += 1
-                else:
-                    notlivestream = False
-                    video_url = info['url']
-        else:
-            video_url = info['url']
-        self.proper_url = video_url
-        source = discord.FFmpegPCMAudio(video_url,
-                                        **FFMPEG_OPTIONS)  # converts the youtube audio source into a source discord can use
-        if self.queue_obj.getplaying() == True:
-            time = datetime.now() - self.startmusictime
-            seconds = self.duration - time.total_seconds()
-            estimated_tot = self.queue_obj.get_estimated_total_time() + seconds
-            estimated_tot = secondstotime(estimated_tot)
-            em = discord.Embed(title=f"Song Added to Queue!", url=self.queue_obj.add_song(song, ctx.author),
-                               description=f"{info['title']} \n **Estimated time until play:** `{estimated_tot}`")
-            await message.edit(content = "", embed=em)
-        else:
+        if song.startswith("https://open.spotify.com/track/"):
             try:
-                ctx.voice_client.play(source)
-                self.queue_obj.setplaying(True)
-                video_actual_url = "https://www.youtube.com/watch?v=" + info['id']
-                self.title = info['title']
-                self.duration = info['duration']
-                self.url = video_actual_url
-                self.thumbnail = f"https://img.youtube.com/vi/{info['id']}/1.jpg"
-                if info['duration'] == None:
-                    em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
-                                       description=f"{info['title']} \n **Duration:** `None - Livestream`")
-                else:
-                    em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
-                                       description=f"{info['title']} \n **Duration:** `{secondstotime(info['duration'])}`")
-                em.set_thumbnail(url=f"https://img.youtube.com/vi/{info['id']}/1.jpg")
-                em.set_author(name=f"Queued by {ctx.author.name}#{ctx.author.discriminator}",
-                              url="https://youtube.com/watch?v=dQw4w9WgXcQ",
-                              icon_url=ctx.author.avatar_url)
-
-                await message.edit(content = "", embed=em)
-                self.startmusictime = datetime.now()
-                self.author = ctx.author
-                # asyncio.create_task(await self.play_next(ctx.voice_client))
+                song_id = re.sub("https://open.spotify.com/track/", "", song)
+                track = "spotify:track:"+song_id
+                track = sp.track(track)
+                print(track)
+                track_name = track['name']
+                print(track_name)
+                track_artist = track['album']['artists'][0]['name']
+                print(track_artist)
+                searchquery = track_name + " - " + track_artist
+                print(searchquery)
+                await self.play(ctx = ctx, song = searchquery)
             except Exception as e:
+                await ctx.reply("Uh oh! A problem has occured!")
                 print(e)
-                self.title = info['title']
-                self.duration = info['duration']
-                video_actual_url = "https://www.youtube.com/watch?v=" + info['id']
-                self.url = video_actual_url
-
-                self.thumbnail = f"https://img.youtube.com/vi/{info['id']}/1.jpg"
-                self.queue_obj.setplaying(True)
-                channel = ctx.author.voice.channel
-                await channel.connect(timeout=60, reconnect=True)
-                title = info['title']
-                duration = info['duration']
-                if info['duration'] == None:
-                    em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
-                                       description=f"{info['title']} \n **Duration:** `None - Livestream`")
-                else:
-                    em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
-                                       description=f"{info['title']} \n **Duration:** `{secondstotime(info['duration'])}`")
-                em.set_thumbnail(url=f"https://img.youtube.com/vi/{info['id']}/1.jpg")
-                em.set_author(name=f"Queued by {ctx.author.name}#{ctx.author.discriminator}",
-                              url="https://youtube.com/watch?v=dQw4w9WgXcQ",
-                              icon_url=ctx.author.avatar_url)
+        else:
+            message = await ctx.reply(content="Processing...")
+            if ctx.voice_client is None:
+                await self.join(ctx, False, message)
+            elif ctx.author.voice is None:
+                await message.edit("You need to be in a voice channel in order to use the bot!")
+            elif not (ctx.author.voice.channel and ctx.author.voice.channel == ctx.voice_client.channel):
+                await message.edit("You need to be in the same voice channel as the bot in order to use this command.")
+            self.textchannel = ctx.channel
+            notlivestream = True
+            num = 0
+            info = ydl.extract_info(f"ytsearch:{song}", download=False)['entries'][num]
+            if info['duration'] == None:
+                while notlivestream:
+                    info = ydl.extract_info(f"ytsearch3:{song}", download=False)['entries'][num]
+                    if info['duration'] == None:
+                        num += 1
+                    else:
+                        notlivestream = False
+                        video_url = info['url']
+            else:
+                video_url = info['url']
+            self.proper_url = video_url
+            source = discord.FFmpegPCMAudio(video_url,
+                                            **FFMPEG_OPTIONS)  # converts the youtube audio source into a source discord can use
+            if self.queue_obj.getplaying() == True:
+                if self.startmusictime == None:
+                    self.startmusictime = datetime.now()
+                time = datetime.now() - self.startmusictime
+                seconds = self.duration - time.total_seconds()
+                estimated_tot = self.queue_obj.get_estimated_total_time() + seconds
+                estimated_tot = secondstotime(estimated_tot)
+                em = discord.Embed(title=f"Song Added to Queue!", url=self.queue_obj.add_song(song, ctx.author),
+                                   description=f"{info['title']} \n **Estimated time until play:** `{estimated_tot}`")
                 await message.edit(content = "", embed=em)
-                ctx.voice_client.play(source)
-                self.author = ctx.author
-                self.startmusictime = datetime.now()
+            else:
+                try:
+                    ctx.voice_client.play(source)
+                    self.queue_obj.setplaying(True)
+                    video_actual_url = "https://www.youtube.com/watch?v=" + info['id']
+                    self.title = info['title']
+                    self.duration = info['duration']
+                    self.url = video_actual_url
+                    self.thumbnail = f"https://img.youtube.com/vi/{info['id']}/1.jpg"
+                    if info['duration'] == None:
+                        em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
+                                           description=f"{info['title']} \n **Duration:** `None - Livestream`")
+                    else:
+                        em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
+                                           description=f"{info['title']} \n **Duration:** `{secondstotime(info['duration'])}`")
+                    em.set_thumbnail(url=f"https://img.youtube.com/vi/{info['id']}/1.jpg")
+                    em.set_author(name=f"Queued by {ctx.author.name}#{ctx.author.discriminator}",
+                                  url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+                                  icon_url=ctx.author.avatar_url)
+
+                    await message.edit(content = "", embed=em)
+                    self.startmusictime = datetime.now()
+                    self.author = ctx.author
+                    # asyncio.create_task(await self.play_next(ctx.voice_client))
+                except Exception as e:
+                    print(e)
+                    self.title = info['title']
+                    self.duration = info['duration']
+                    video_actual_url = "https://www.youtube.com/watch?v=" + info['id']
+                    self.url = video_actual_url
+
+                    self.thumbnail = f"https://img.youtube.com/vi/{info['id']}/1.jpg"
+                    self.queue_obj.setplaying(True)
+                    channel = ctx.author.voice.channel
+                    await channel.connect(timeout=60, reconnect=True)
+                    title = info['title']
+                    duration = info['duration']
+                    if info['duration'] == None:
+                        em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
+                                           description=f"{info['title']} \n **Duration:** `None - Livestream`")
+                    else:
+                        em = discord.Embed(title=f"Now Playing:", url=video_actual_url,
+                                           description=f"{info['title']} \n **Duration:** `{secondstotime(info['duration'])}`")
+                    em.set_thumbnail(url=f"https://img.youtube.com/vi/{info['id']}/1.jpg")
+                    em.set_author(name=f"Queued by {ctx.author.name}#{ctx.author.discriminator}",
+                                  url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+                                  icon_url=ctx.author.avatar_url)
+                    await message.edit(content = "", embed=em)
+                    ctx.voice_client.play(source)
+                    self.author = ctx.author
+                    self.startmusictime = datetime.now()
                 # asyncio.create_task(await self.play_next(ctx.voice_client))
 
     # @commands.commands(aliases = ["v"])
@@ -294,76 +314,80 @@ class Music(commands.Cog):
     #     pass
 
     @commands.command(aliases=["af"])
-    async def artistfind(self, ctx, *, artist):
+    async def artistfind(self, ctx, *, artist = None):
         interaction_exist = False
         message = False
-        try:
-            artist_id = sp.search(q=artist, type="artist", limit=10)["artists"]["items"][0]["id"]
-            artist_name = sp.search(q=artist, type="artist", limit=10)["artists"]["items"][0]["name"]
-            artist_top_tracks = sp.artist_top_tracks(artist_id, country='US')
-            embed = discord.Embed(title = f"**Artist - {artist_name}**", description = f"Top 5 tracks by {artist_name}: \n")
-            embed1 = discord.Embed(title="\u200b", description="`1`")
-            embed1.add_field(name = f'__{artist_top_tracks["tracks"][0]["name"]}__',
-                             value = f"Duration: `{secondstotime(artist_top_tracks['tracks'][0]['duration_ms']/1000)}`")
-            embed1.set_thumbnail(url = artist_top_tracks["tracks"][0]["album"]["images"][0]["url"])
-            embed2 = discord.Embed(title = "\u200b", description = "`2`")
-            embed2.add_field(name = f'__{artist_top_tracks["tracks"][1]["name"]}__',
-                             value = f"Duration: `{secondstotime(artist_top_tracks['tracks'][1]['duration_ms']/1000)}`")
-            embed2.set_thumbnail(url = artist_top_tracks["tracks"][1]["album"]["images"][0]["url"])
-            embed3 = discord.Embed(title="\u200b", description="`3`")
-            embed3.add_field(name=f'__{artist_top_tracks["tracks"][2]["name"]}__',
-                             value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][2]['duration_ms'] / 1000)}`")
-            embed3.set_thumbnail(url = artist_top_tracks["tracks"][2]["album"]["images"][0]["url"])
-            embed4 = discord.Embed(title="\u200b", description="`4`")
-            embed4.add_field(name=f'__{artist_top_tracks["tracks"][3]["name"]}__',
-                             value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][3]['duration_ms'] / 1000)}`")
-            embed4.set_thumbnail(url = artist_top_tracks["tracks"][3]["album"]["images"][0]["url"])
-            embed5 = discord.Embed(title="\u200b", description="`5`")
-            embed5.add_field(name=f'__{artist_top_tracks["tracks"][4]["name"]}__',
-                             value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][4]['duration_ms'] / 1000)}`")
-            embed5.set_thumbnail(url = artist_top_tracks["tracks"][4]["album"]["images"][0]["url"])
-            embed5.set_footer(text = "Select a number (song) that you would like to play, if any.")
-            await ctx.reply(embed=embed)
-            await ctx.send(embed=embed1)
-            await ctx.send(embed=embed2)
-            await ctx.send(embed=embed3)
-            await ctx.send(embed=embed4)
-            message = await ctx.send(embed=embed5, components = [[Button(label = "1"), Button(label = "2"), Button(label = "3"), Button(label = "4"), Button(label = "5")]])
-            try:
-                interaction = await self.bot.wait_for("button_click")
-                if interaction:
-                    if interaction.user == ctx.author:
-                        interaction_exist = True
-                        if interaction.component.label == "1":
-                            query = artist_top_tracks["tracks"][0]["name"] + " - " + artist_name
-                        elif interaction.component.label == "2":
-                            query = artist_top_tracks["tracks"][1]["name"] + " - " + artist_name
-                        elif interaction.component.label == "3":
-                            query = artist_top_tracks["tracks"][2]["name"] + " - " + artist_name
-                        elif interaction.component.label == "4":
-                            query = artist_top_tracks["tracks"][3]["name"] + " - " + artist_name
-                        elif interaction.component.label == "5":
-                            query = artist_top_tracks["tracks"][4]["name"] + " - " + artist_name
-                        await interaction.respond(type=6)
-                        await self.play(ctx=ctx, song=query)
-                        await message.edit(
-                            components=[[Button(label="1", disabled=True), Button(label="2", disabled=True),
-                                         Button(label="3", disabled=True), Button(label="4", disabled=True),
-                                         Button(label="5", disabled=True)]])
-                    else:
-                        await interaction.respond(content = "This is not for you!")
-            except asyncio.TimeoutError:
-                await message.edit(components = [[Button(label = "1", disabled = True), Button(label = "2", disabled = True), Button(label = "3", disabled = True), Button(label = "4", disabled = True), Button(label = "5", disabled = True)]])
+        if artist == None:
+            await ctx.reply("Please add the artist that you would like to find in the command!")
+        else:
 
-        except Exception as e:
-            print(e)
-            if interaction_exist == False:
-                await ctx.send("Cannot find artist!")
-            if message != False:
-                await message.edit(
-                    components=[[Button(label="1", disabled=True), Button(label="2", disabled=True),
-                                 Button(label="3", disabled=True), Button(label="4", disabled=True),
-                                 Button(label="5", disabled=True)]])
+            try:
+                artist_id = sp.search(q=artist, type="artist", limit=10)["artists"]["items"][0]["id"]
+                artist_name = sp.search(q=artist, type="artist", limit=10)["artists"]["items"][0]["name"]
+                artist_top_tracks = sp.artist_top_tracks(artist_id, country='US')
+                embed = discord.Embed(title = f"**Artist - {artist_name}**", description = f"Top 5 tracks by {artist_name}: \n")
+                embed1 = discord.Embed(title="\u200b", description="`1`")
+                embed1.add_field(name = f'__{artist_top_tracks["tracks"][0]["name"]}__',
+                                 value = f"Duration: `{secondstotime(artist_top_tracks['tracks'][0]['duration_ms']/1000)}`")
+                embed1.set_thumbnail(url = artist_top_tracks["tracks"][0]["album"]["images"][0]["url"])
+                embed2 = discord.Embed(title = "\u200b", description = "`2`")
+                embed2.add_field(name = f'__{artist_top_tracks["tracks"][1]["name"]}__',
+                                 value = f"Duration: `{secondstotime(artist_top_tracks['tracks'][1]['duration_ms']/1000)}`")
+                embed2.set_thumbnail(url = artist_top_tracks["tracks"][1]["album"]["images"][0]["url"])
+                embed3 = discord.Embed(title="\u200b", description="`3`")
+                embed3.add_field(name=f'__{artist_top_tracks["tracks"][2]["name"]}__',
+                                 value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][2]['duration_ms'] / 1000)}`")
+                embed3.set_thumbnail(url = artist_top_tracks["tracks"][2]["album"]["images"][0]["url"])
+                embed4 = discord.Embed(title="\u200b", description="`4`")
+                embed4.add_field(name=f'__{artist_top_tracks["tracks"][3]["name"]}__',
+                                 value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][3]['duration_ms'] / 1000)}`")
+                embed4.set_thumbnail(url = artist_top_tracks["tracks"][3]["album"]["images"][0]["url"])
+                embed5 = discord.Embed(title="\u200b", description="`5`")
+                embed5.add_field(name=f'__{artist_top_tracks["tracks"][4]["name"]}__',
+                                 value=f"Duration: `{secondstotime(artist_top_tracks['tracks'][4]['duration_ms'] / 1000)}`")
+                embed5.set_thumbnail(url = artist_top_tracks["tracks"][4]["album"]["images"][0]["url"])
+                embed5.set_footer(text = "Select a number (song) that you would like to play, if any.")
+                await ctx.reply(embed=embed)
+                await ctx.send(embed=embed1)
+                await ctx.send(embed=embed2)
+                await ctx.send(embed=embed3)
+                await ctx.send(embed=embed4)
+                message = await ctx.send(embed=embed5, components = [[Button(label = "1"), Button(label = "2"), Button(label = "3"), Button(label = "4"), Button(label = "5")]])
+                try:
+                    interaction = await self.bot.wait_for("button_click")
+                    if interaction:
+                        if interaction.user == ctx.author:
+                            interaction_exist = True
+                            if interaction.component.label == "1":
+                                query = artist_top_tracks["tracks"][0]["name"] + " - " + artist_name
+                            elif interaction.component.label == "2":
+                                query = artist_top_tracks["tracks"][1]["name"] + " - " + artist_name
+                            elif interaction.component.label == "3":
+                                query = artist_top_tracks["tracks"][2]["name"] + " - " + artist_name
+                            elif interaction.component.label == "4":
+                                query = artist_top_tracks["tracks"][3]["name"] + " - " + artist_name
+                            elif interaction.component.label == "5":
+                                query = artist_top_tracks["tracks"][4]["name"] + " - " + artist_name
+                            await interaction.respond(type=6)
+                            await self.play(ctx=ctx, song=query)
+                            await message.edit(
+                                components=[[Button(label="1", disabled=True), Button(label="2", disabled=True),
+                                             Button(label="3", disabled=True), Button(label="4", disabled=True),
+                                             Button(label="5", disabled=True)]])
+                        else:
+                            await interaction.respond(content = "This is not for you!")
+                except asyncio.TimeoutError:
+                    await message.edit(components = [[Button(label = "1", disabled = True), Button(label = "2", disabled = True), Button(label = "3", disabled = True), Button(label = "4", disabled = True), Button(label = "5", disabled = True)]])
+
+            except Exception as e:
+                print(e)
+                if interaction_exist == False:
+                    await ctx.send("Cannot find artist!")
+                if message != False:
+                    await message.edit(
+                        components=[[Button(label="1", disabled=True), Button(label="2", disabled=True),
+                                     Button(label="3", disabled=True), Button(label="4", disabled=True),
+                                     Button(label="5", disabled=True)]])
 
     # @commands.command(aliases=["pp", "playpodcast", "playpodcasts"])
     # async def podcastplay(self):
